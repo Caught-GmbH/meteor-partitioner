@@ -1,12 +1,9 @@
 ###
   SERVER METHODS
   Hook in group id to all operations, including find
-
-  Grouping contains _id: userId and groupId: groupId
 ###
 
 Partitioner = {}
-Grouping = new Mongo.Collection("ts.grouping")
 
 # Meteor environment variables for scoping group operations
 Partitioner._currentGroup = new Meteor.EnvironmentVariable()
@@ -19,19 +16,19 @@ Partitioner._directOps = new Meteor.EnvironmentVariable()
 Partitioner.setUserGroup = (userId, groupId) ->
   check(userId, String)
   check(groupId, String)
-  if Grouping.findOne(userId)
+  if Meteor.users.find({_id: userId, group: {$exists: true}}, {fields: {_id: 1}}).count()
     throw new Meteor.Error(403, "User is already in a group")
 
-  Grouping.upsert userId,
-    $set: {groupId: groupId}
+  Meteor.users.update userId,
+    $set: {group: groupId}
 
 Partitioner.getUserGroup = (userId) ->
   check(userId, String)
-  Grouping.findOne(userId)?.groupId
+  Meteor.users.findOne(userId, {fields: {group: 1}})?.group
 
 Partitioner.clearUserGroup = (userId) ->
   check(userId, String)
-  Grouping.remove(userId)
+  Meteor.users.update(userId, {$unset: {group: 1}})
 
 Partitioner.group = ->
   # If group is overridden, return that instead
@@ -56,7 +53,8 @@ Partitioner.directOperation = (func) ->
   Partitioner._directOps.withValue(true, func);
 
 # This can be replaced - currently not documented
-Partitioner._isAdmin = (userId) -> Meteor.users.findOne(userId).admin is true
+# Don't retrieve full user object - fix bug #32
+Partitioner._isAdmin = (userId) -> Meteor.users.find({_id: userId, admin: true}, {fields: {_id: 1}}).count() > 0
 
 getPartitionedIndex = (index) ->
   defaultIndex = { _groupId : 1 }
@@ -112,10 +110,10 @@ userFindHook = (userId, selector, options) ->
   return true if (!userId and !groupId)
 
   unless groupId
-    user = Meteor.users.findOne(userId)
-    groupId = Grouping.findOne(userId)?.groupId
+    user = Meteor.users.findOne(userId, {fields: group: 1, admin: 1})
+    groupId = user.group
     # If user is admin and not in a group, proceed as normal (select all users)
-    return true if user.admin and !groupId
+    return true if user and user.admin and !groupId
     # Normal users need to be in a group
     throw new Meteor.Error(403, ErrMsg.groupErr) unless groupId
 
@@ -130,10 +128,6 @@ userFindHook = (userId, selector, options) ->
     _.extend(selector, filter)
 
   return true
-
-# Attach the find hooks to Meteor.users
-Meteor.users.before.find userFindHook
-Meteor.users.before.findOne userFindHook
 
 # No allow/deny for find so we make our own checks
 findHook = (userId, selector, options) ->
@@ -151,7 +145,7 @@ findHook = (userId, selector, options) ->
   groupId = Partitioner._currentGroup.get()
   unless groupId
     throw new Meteor.Error(403, ErrMsg.userIdErr) unless userId
-    groupId = Grouping.findOne(userId)?.groupId
+    groupId = Partitioner.getUserGroup(userId)
     throw new Meteor.Error(403, ErrMsg.groupErr) unless groupId
 
   # if object (or empty) selector, just filter by group
@@ -177,24 +171,27 @@ insertHook = (userId, doc) ->
   groupId = Partitioner._currentGroup.get()
   unless groupId
     throw new Meteor.Error(403, ErrMsg.userIdErr) unless userId
-    groupId = Grouping.findOne(userId)?.groupId
+    groupId = Partitioner.getUserGroup(userId)
     throw new Meteor.Error(403, ErrMsg.groupErr) unless groupId
 
   doc._groupId = groupId
   return true
 
-# Sync grouping needed for hooking Meteor.users
-Grouping.find().observeChanges
-  added: (id, fields) ->
-    unless Meteor.users.update(id, $set: {"group": fields.groupId} )
-      Meteor._debug "Tried to set group for nonexistent user #{id}"
-    return
-  changed: (id, fields) ->
-    unless Meteor.users.update(id, $set: {"group": fields.groupId} )
-      Meteor._debug "Tried to change group for nonexistent user #{id}"
-  removed: (id) ->
-    unless Meteor.users.update(id, $unset: {"group": null} )
-      Meteor._debug "Tried to unset group for nonexistent user #{id}"
+userInsertHook = (userId, doc) ->
+  # Don't add group for direct inserts
+  return true if Partitioner._directOps.get() is true
+
+  groupId = Partitioner._currentGroup.get()
+  unless groupId
+    groupId = userId && Partitioner.getUserGroup(userId)
+
+  doc.group = groupId if groupId
+  return true
+
+# Attach the find/insert hooks to Meteor.users
+Meteor.users.before.find userFindHook
+Meteor.users.before.findOne userFindHook
+Meteor.users.before.insert userInsertHook
 
 TestFuncs =
   getPartitionedIndex: getPartitionedIndex

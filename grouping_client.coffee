@@ -9,12 +9,16 @@ Partitioner.group = ->
   return unless userId
   return Meteor.users.findOne(userId, fields: {group: 1})?.group
 
+# This can be replaced - currently not documented
+# Don't retrieve full user object - fix bug #32
+Partitioner._isAdmin = (userId) -> Meteor.users.find({_id: userId, admin: true}, {fields: {_id: 1}}).count() > 0
+
 userFindHook = (userId, selector, options) ->
   # Do the usual find for no user or single selector
   return true if !userId or Helpers.isDirectUserSelector(selector)
 
   # No hooking needed for regular users, taken care of on server
-  return true unless Meteor.user()?.admin
+  return true unless Partitioner._isAdmin(Meteor.userId())
 
   # Don't have admin see itself for global finds
   unless @args[0]
