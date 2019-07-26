@@ -111,6 +111,9 @@ userFindHook = (userId, selector, options) ->
 
   unless groupId
     user = Meteor.users.findOne(userId, {fields: group: 1, admin: 1})
+    # user will be undefined inside reactive publish when user is deleted while subscribed
+    return false if !user
+
     groupId = user.group
     # If user is admin and not in a group, proceed as normal (select all users)
     return true if user and user.admin and !groupId
