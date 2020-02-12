@@ -17,7 +17,8 @@ Helpers = {
 			typeof(selector)==='string'
 			|| typeof(selector._id)==='string'
 			|| typeof(selector.username)==='string'
-			|| (typeof(selector._id)==='object' && selector._id.$in!=null)
+			// null is type 'object'
+			|| (typeof(selector._id)==='object' && selector._id!=null && selector._id.$in!=null)
 		);
 	}
 };
