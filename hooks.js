@@ -30,7 +30,7 @@ function getUserId () {
 
 const proto = Mongo.Collection.prototype;
 const directEnv = new Meteor.EnvironmentVariable(false);
-const methods = ['find', 'findOne', 'insert', 'update', 'remove'];
+const methods = ['find', 'findOne', 'insert', 'update', 'remove', 'upsert'];
 
 // create the collection.before.* methods
 // have to create it initially using a getter so we can store self=this and create a new group of functions which have access to self
@@ -88,7 +88,7 @@ methods.forEach(method => {
 		// run the hook
 		if (this['_groupingBefore_'+method]) {
 			global.hookLogging && typeof args[0]!='string' && console.log('hook', 'b4', this._name+"."+method, JSON.stringify(args[0]), JSON.stringify(args[1]));
-			this['_groupingBefore_'+method].call(context, userId, args[0], args[1]);
+			this['_groupingBefore_'+method].call(context, userId, args[0], args[1], args[2]);
 			global.hookLogging && typeof args[0]!='string' && console.log('hook', 'af', this._name+"."+method, JSON.stringify(args[0]), JSON.stringify(args[1]));
 		}
 

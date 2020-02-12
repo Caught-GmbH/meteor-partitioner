@@ -47,6 +47,20 @@ function userFindHook(userId, selector /*, options*/) {
 	return true;
 }
 
+function hookGetSetGroup(userId) {
+	let groupId = Partitioner._currentGroup.get();
+
+	if (!groupId) {
+		if (!userId) throw new Meteor.Error(403, ErrMsg.userIdErr);
+
+		groupId = Partitioner.getUserGroup(userId);
+		if (!groupId) throw new Meteor.Error(403, ErrMsg.groupErr);
+
+		Partitioner._currentGroup.set(groupId);
+	}
+	return groupId;
+}
+
 // No allow/deny for find so we make our own checks
 function findHook(userId, selector, options) {
 	if (
@@ -62,17 +76,7 @@ function findHook(userId, selector, options) {
 
 	) return true;
 
-	// Check for global hook
-	let groupId = Partitioner._currentGroup.get();
-
-	if (!groupId) {
-		if (!userId) throw new Meteor.Error(403, ErrMsg.userIdErr);
-
-		groupId = Partitioner.getUserGroup(userId);
-		if (!groupId) throw new Meteor.Error(403, ErrMsg.groupErr);
-
-		Partitioner._currentGroup.set(groupId);
-	}
+	const groupId = hookGetSetGroup(userId);
 
 	// force the selector to scope for the _groupId
 	if (selector == null) {
@@ -97,14 +101,7 @@ function insertHook(userId, doc) {
 	// Don't add group for direct inserts
 	if (Partitioner._directOps.get() === true) return true;
 
-	let groupId = Partitioner._currentGroup.get();
-
-	if (!groupId) {
-		if (!userId) throw new Meteor.Error(403, ErrMsg.userIdErr);
-
-		groupId = Partitioner.getUserGroup(userId);
-		if (!groupId) throw new Meteor.Error(403, ErrMsg.groupErr);
-	}
+	const groupId = hookGetSetGroup(userId);
 
 	doc._groupId = groupId;
 	return true;
@@ -114,10 +111,30 @@ function userInsertHook(userId, doc) {
 	// Don't add group for direct inserts
 	if (Partitioner._directOps.get() === true) return true;
 
-	const groupId = Partitioner._currentGroup.get() || (userId && Partitioner.getUserGroup(userId))
+	const groupId = hookGetSetGroup(userId);
 
-	if (groupId) doc.group = groupId;
+	doc.group = groupId;
 
+	return true;
+};
+
+function upsertHook(userId, selector, doc) {
+	// Don't add group for direct inserts
+	if (Partitioner._directOps.get() === true) return true;
+
+	const groupId = hookGetSetGroup(userId);
+
+	doc._groupId = groupId;
+	return true;
+};
+
+function userUpsertHook(userId, selector, doc) {
+	// Don't add group for direct inserts
+	if (Partitioner._directOps.get() === true) return true;
+
+	const groupId = hookGetSetGroup(userId);
+
+	doc.group = groupId;
 	return true;
 };
 
@@ -125,6 +142,7 @@ function userInsertHook(userId, doc) {
 Meteor.users.before.find(userFindHook);
 Meteor.users.before.findOne(userFindHook);
 Meteor.users.before.insert(userInsertHook);
+Meteor.users.before.upsert(userUpsertHook);
 
 function getPartitionedIndex(index) {
 	const defaultIndex = {_groupId: 1};
@@ -217,6 +235,7 @@ Partitioner = {
 		});
 		collection.before.find(findHook);
 		collection.before.findOne(findHook);
+		collection.before.upsert(upsertHook);
 		// These will hook the _validated methods as well
 
 		collection.before.insert(insertHook);
@@ -240,10 +259,3 @@ Partitioner = {
 		return Partitioner._searchAllUsers.withValue(true, () => orig.apply(this, arguments));
 	};
 });
-
-TestFuncs = {
-	getPartitionedIndex: getPartitionedIndex,
-	userFindHook: userFindHook,
-	findHook: findHook,
-	insertHook: insertHook
-};

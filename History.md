@@ -1,5 +1,16 @@
 ## vNEXT
 
+## v1.0.3
+
+* Added upsert hooks
+
+## v1.0.0
+
+* Major rewrite by wildhart
+* Added support for `createUser`, `findUserByEmail`, `findUserByUsername` finding globally
+* Use own lightweight collection hooks instead of matb33:collection-hooks
+* Removed tests (for now)
+
 ## v0.5.9
 
 * Fix a bug that would create blank records for users who are deleted. (#14) 
