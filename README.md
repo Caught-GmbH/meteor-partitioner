@@ -1,7 +1,9 @@
-partitioner [![Build Status](https://travis-ci.org/mizzao/meteor-partitioner.svg?branch=master)](https://travis-ci.org/mizzao/meteor-partitioner)
+partitioner
 ===========
 
 Transparently divide a single Meteor app into several different instances shared between different groups of users.
+
+This fork of [mizzao:partitioner](https://github.com/Meteor-Community-Packages/meteor-partitioner) does not use a separate collection to hold the users groups, instead it just uses the `Meteor.users` collection.
 
 ## What's this do?
 
@@ -18,12 +20,14 @@ This package allows you to structure your code without thinking about how to sep
 Install with Meteor:
 
 ```
-meteor add mizzao:partitioner
+meteor add wildhart:partitioner
 ```
 
 ## Usage
 
-Partitioner uses the [collection-hooks](https://github.com/matb33/meteor-collection-hooks) package to transparently intercept collection operations on the client and server side so that writing code for each group of users is almost the same as writing for the whole app. Only minor modifications from a standalone app designed for a single group of users is necessary.
+This fork of Partitioner uses its own internal version of a simplified [collection-hooks](https://github.com/matb33/meteor-collection-hooks) package to transparently intercept collection operations on the client and server side so that writing code for each group of users is almost the same as writing for the whole app. Only minor modifications from a standalone app designed for a single group of users is necessary.
+
+**If you also use the `collection-hooks` packages then this version of Partitioner may clash with it**
 
 Partitioner operates at the collection level. On the server and client, call `Partition.partitionCollection` immediately after declaring a collection:
 
