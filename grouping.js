@@ -1,3 +1,5 @@
+const multipleGroupCollections = {};
+
 // Publish admin and group for users that have it
 Meteor.publish(null, function () {
 	return this.userId && Meteor.users.direct.find(this.userId, {fields: {admin: 1, group: 1}});
@@ -97,13 +99,13 @@ function findHook(userId, selector, options) {
 	return true;
 };
 
-function insertHook(userId, doc) {
+function insertHook(multipleGroups, userId, doc) {
 	// Don't add group for direct inserts
 	if (Partitioner._directOps.get() === true) return true;
 
 	const groupId = hookGetSetGroup(userId);
 
-	doc._groupId = groupId;
+	doc._groupId = multipleGroups ? [groupId] : groupId;
 	return true;
 };
 
@@ -118,13 +120,13 @@ function userInsertHook(userId, doc) {
 	return true;
 };
 
-function upsertHook(userId, selector, doc) {
+function upsertHook(multipleGroups, userId, selector, doc) {
 	// Don't add group for direct inserts
 	if (Partitioner._directOps.get() === true) return true;
 
 	const groupId = hookGetSetGroup(userId);
 
-	doc._groupId = groupId;
+	doc._groupId = multipleGroups ? [groupId] : groupId;
 	return true;
 };
 
@@ -216,7 +218,49 @@ Partitioner = {
 		return !!Meteor.users.direct.findOne({_id, admin: true}, {fields: {_id: 1}});
 	},
 
-	partitionCollection(collection, options={}) {
+	addToGroup(collection, entityId, groupId) {
+		if (!multipleGroupCollections[collection._name]) {
+			throw new Meteor.Error(403, ErrMsg.multiGroupErr);
+		}
+
+		let currentGroupIds = collection.direct.findOne(entityId, {fields: {_groupId: 1}})?._groupId;
+		if (!currentGroupIds) {
+			currentGroupIds = [groupId];
+		} else if (typeof currentGroupIds == 'string') {
+			currentGroupIds = [currentGroupIds];
+		}
+
+		if (currentGroupIds.indexOf(groupId) == -1) {
+			currentGroupIds.push(groupId);
+			collection.direct.update(entityId, {$set: {_groupId: currentGroupIds}});
+		}
+		console.log('addToGroup', currentGroupIds);
+		return currentGroupIds;
+	},
+
+	removeFromGroup(collection, entityId, groupId) {
+		if (!multipleGroupCollections[collection._name]) {
+			throw new Meteor.Error(403, ErrMsg.multiGroupErr);
+		}
+
+		let currentGroupIds = collection.direct.findOne(entityId, {fields: {_groupId: 1}})?._groupId;
+		if (!currentGroupIds) {
+			return [];
+		}
+
+		if (typeof currentGroupIds == 'string') {
+			currentGroupIds = [currentGroupIds];
+		}
+		const index = currentGroupIds.indexOf(groupId);
+		if (index != -1) {
+			currentGroupIds.splice(index, 1);
+			collection.direct.update(entityId, {$set: {_groupId: currentGroupIds}});
+		}
+
+		return currentGroupIds;
+	},
+
+	partitionCollection(collection, options = {}) {
 		// Because of the deny below, need to create an allow validator
 		// on an insecure collection if there isn't one already
 		if (collection._isInsecure()) {
@@ -235,11 +279,16 @@ Partitioner = {
 		});
 		collection.before.find(findHook);
 		collection.before.findOne(findHook);
-		collection.before.upsert(upsertHook);
+		collection.before.upsert((...args) => upsertHook(options.multipleGroups, ...args));
 		// These will hook the _validated methods as well
 
-		collection.before.insert(insertHook);
+		collection.before.insert((...args) => insertHook(options.multipleGroups, ...args));
 		// No update/remove hook necessary, findHook will be used automatically
+
+		// store a hash of which collections allow multiple groups
+		if (options.multipleGroups) {
+			multipleGroupCollections[collection._name] = true;
+		}
 
 		// Index the collections by groupId on the server for faster lookups across groups
 		return collection._ensureIndex(getPartitionedIndex(options.index), options.indexOptions);

@@ -40,6 +40,7 @@ Partitioner.partitionCollection(Foo, options);
 
 - `index`: an optional index argument that will be transformed and passed to `Collection._ensureIndex`; the default indexing behavior is to just index by group. This is useful if each partition will contain a lot of data and require efficient database lookups.
 - `indexOptions`: options passed for the second argument of `ensureIndex`.
+- `multipleGroups`: allow this collection to be shared by multiple groups.  The `_groupId` parameter will become an array in instead of a string.
 
 Collections that have been partitioned will behave as if there is a separate instance for each group. In particular, on the server and client, the user's current group is used to do the following:
 
@@ -87,6 +88,22 @@ A convenience function for running `Partitioner.bindGroup` as the group of a par
 #### `Partitioner.directOperation(func)`
 
 Sometimes we need to do operations over the entire underlying collection, including all groups. This provides a way to do that, and will not throw an error if the current user method invocation context is not part of a group.
+
+#### `Partitioner.addToGroup(collection, entityId, groupId)`
+
+Allows a document to be shared across multiple groups.  Will throw an error if the collection wasn't partitioned with the `multipleGroups: true` option.  E.g.:
+```
+Foo = new Mongo.Collection("foo");
+Partitioner.partitionCollection(Foo, {multipleGroups: true});
+...
+const newFooId = Foo.insert({msg: 'Hi, I'm a shared Foo'});
+// newFoo will start off only in the logged-in users group, but we want to share it:
+Partitioner.addToGroup(Foo, newFooId, sharedGroupId)
+```
+
+#### `Partitioner.removeFromGroup(collection, entityId, groupId)`
+
+Remove a document from a shared group.
 
 ## Configuring Subscriptions
 
@@ -213,3 +230,8 @@ See [CrowdMapper](https://github.com/mizzao/CrowdMapper) for a highly concurrent
 
 - For a discussion of how this was implemented see https://groups.google.com/forum/#!topic/meteor-talk/8u2LVk8si_s
 - See also http://stackoverflow.com/q/17356615/586086
+
+## Version History
+
+### 1.1.0 (2020-02-1)
+- Added `multipleGroups` option and `addToGroup()`/`removeFromGroup()` methods.  Note, this is backwards compatible with existing collections.

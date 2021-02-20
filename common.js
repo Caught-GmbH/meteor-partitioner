@@ -1,6 +1,7 @@
 ErrMsg = {
 	userIdErr: "Must be logged in to operate on partitioned collection",
-	groupErr: "Must have group assigned to operate on partitioned collection"
+	groupErr: "Must have group assigned to operate on partitioned collection",
+	multiGroupErr: "Attempted to apply multi-group operation on a single-group collection.  Pass multiGroups: true to Partitioner.Partitioner options",
 };
 
 Helpers = {
