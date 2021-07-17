@@ -302,9 +302,11 @@ Partitioner = {
 // Don't wrap createUser with Partitioner.directOperation because want inserted user doc to be
 // automatically assigned to the group
 
-['createUser', 'findUserByEmail', 'findUserByUsername'].forEach(fn => {
+['createUser', 'findUserByEmail', 'findUserByUsername', '_attemptLogin'].forEach(fn => {
 	const orig = Accounts[fn];
-	Accounts[fn] = function() {
-		return Partitioner._searchAllUsers.withValue(true, () => orig.apply(this, arguments));
-	};
+	if (orig) {
+		Accounts[fn] = function() {
+			return Partitioner._searchAllUsers.withValue(true, () => orig.apply(this, arguments));
+		};
+	}
 });

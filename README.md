@@ -1,4 +1,4 @@
-partitioner
+Partitioner
 ===========
 
 Transparently divide a single Meteor app into several different instances shared between different groups of users.
@@ -233,5 +233,7 @@ See [CrowdMapper](https://github.com/mizzao/CrowdMapper) for a highly concurrent
 
 ## Version History
 
-### 1.1.0 (2020-02-1)
+### 1.2.0 (2021-07-17)
+- Meteor 2.3 compatibility.
+### 1.1.0 (2020-02-01)
 - Added `multipleGroups` option and `addToGroup()`/`removeFromGroup()` methods.  Note, this is backwards compatible with existing collections.
