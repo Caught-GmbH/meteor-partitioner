@@ -15,8 +15,8 @@ function userFindHook(userId, selector /*, options */) {
 	return true;
 };
 
-Meteor.users.before.find(userFindHook);
-Meteor.users.before.findOne(userFindHook);
+Meteor.users._partitionerBefore.find(userFindHook);
+Meteor.users._partitionerBefore.findOne(userFindHook);
 
 function insertHook(userId, doc) {
 	if (!userId) throw new Meteor.Error(403, ErrMsg.userIdErr);
@@ -29,18 +29,18 @@ function insertHook(userId, doc) {
 Partitioner = {
 	group() {
 		const userId = Meteor.userId();
-		return userId && (Meteor.users.direct.findOne(userId, {fields: {group: 1}}) || {}).group;
+		return userId && (Meteor.users._partitionerDirect.findOne(userId, {fields: {group: 1}}) || {}).group;
 	},
 
 	// This can be replaced - currently not documented
 	// Don't retrieve full user object - fix bug #32
 	_isAdmin(_id) {
-		return Meteor.users.direct.find({_id, admin: true}, {fields: {_id: 1}}).count() > 0;
+		return Meteor.users._partitionerDirect.find({_id, admin: true}, {fields: {_id: 1}}).count() > 0;
 	},
 
 	// Add in groupId for client so as not to cause unexpected sync changes
 	partitionCollection(collection) {
 		// No find hooks needed if server side filtering works properly
-		return collection.before.insert(insertHook);
+		return collection._partitionerBefore.insert(insertHook);
 	},
 };

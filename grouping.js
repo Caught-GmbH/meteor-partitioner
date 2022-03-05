@@ -2,11 +2,12 @@ const multipleGroupCollections = {};
 
 // Publish admin and group for users that have it
 Meteor.publish(null, function () {
-	return this.userId && Meteor.users.direct.find(this.userId, {fields: {admin: 1, group: 1}});
+	return this.userId && Meteor.users._partitionerDirect.find(this.userId, {fields: {admin: 1, group: 1}});
 });
 
 // Special hook for Meteor.users to scope for each group
 function userFindHook(userId, selector /*, options*/) {
+	console.log('userFindHook', userId, selector);
 	if (Partitioner._directOps.get() === true
 		|| Helpers.isDirectUserSelector(selector)
 		|| Partitioner._searchAllUsers.get() === true
@@ -18,8 +19,9 @@ function userFindHook(userId, selector /*, options*/) {
 	// function, and Partitioner._currentGroup is not set
 	if (!userId && !groupId) return true;
 
+	console.log('   proceeding...', userId, selector);
 	if (!groupId) {
-		const user = Meteor.users.direct.findOne(userId, {fields: {group: 1}});
+		const user = Meteor.users._partitionerDirect.findOne(userId, {fields: {group: 1}});
 
 		// user will be undefined inside reactive publish when user is deleted while subscribed
 		if (!user) return false;
@@ -28,7 +30,7 @@ function userFindHook(userId, selector /*, options*/) {
 
 		// If user is admin and not in a group, proceed as normal (select all users)
 		// do user2 findOne separately so that the findOne above can hit the cache
-		if (!groupId && Meteor.users.direct.findOne(userId, {fields: {admin: 1}}).admin) return true;
+		if (!groupId && Meteor.users._partitionerDirect.findOne(userId, {fields: {admin: 1}}).admin) return true;
 
 		// Normal users need to be in a group
 		if (!groupId) throw new Meteor.Error(403, ErrMsg.groupErr);
@@ -65,6 +67,7 @@ function hookGetSetGroup(userId) {
 
 // No allow/deny for find so we make our own checks
 function findHook(userId, selector, options) {
+	console.log('findHook', userId, selector);
 	if (
 		// Don't scope for direct operations
 		Partitioner._directOps.get() === true
@@ -77,6 +80,8 @@ function findHook(userId, selector, options) {
 		|| Helpers.isDirectSelector(selector)
 
 	) return true;
+
+	console.log('   proceeding...', userId, selector);
 
 	const groupId = hookGetSetGroup(userId);
 
@@ -141,10 +146,10 @@ function userUpsertHook(userId, selector, doc) {
 };
 
 // Attach the find/insert hooks to Meteor.users
-Meteor.users.before.find(userFindHook);
-Meteor.users.before.findOne(userFindHook);
-Meteor.users.before.insert(userInsertHook);
-Meteor.users.before.upsert(userUpsertHook);
+Meteor.users._partitionerBefore.find(userFindHook);
+Meteor.users._partitionerBefore.findOne(userFindHook);
+Meteor.users._partitionerBefore.insert(userInsertHook);
+Meteor.users._partitionerBefore.upsert(userUpsertHook);
 
 function getPartitionedIndex(index) {
 	const defaultIndex = {_groupId: 1};
@@ -166,7 +171,7 @@ Partitioner = {
 		check(userId, String);
 		check(groupId, String);
 
-		if (Meteor.users.direct.findOne(userId, {fields: {group: 1}}).group) {
+		if (Meteor.users._partitionerDirect.findOne(userId, {fields: {group: 1}}).group) {
 			throw new Meteor.Error(403, "User is already in a group");
 		}
 
@@ -175,12 +180,12 @@ Partitioner = {
 
 	getUserGroup(userId) {
 		check(userId, String);
-		return (Meteor.users.direct.findOne(userId, {fields: {group: 1}}) || {}).group;
+		return (Meteor.users._partitionerDirect.findOne(userId, {fields: {group: 1}}) || {}).group;
 	},
 
 	clearUserGroup(userId) {
 		check(userId, String);
-		return Meteor.users.direct.update(userId, {$unset: {group: 1}});
+		return Meteor.users._partitionerDirect.update(userId, {$unset: {group: 1}});
 	},
 
 	group() {
@@ -215,7 +220,7 @@ Partitioner = {
 	},
 
 	_isAdmin(_id) {
-		return !!Meteor.users.direct.findOne({_id, admin: true}, {fields: {_id: 1}});
+		return !!Meteor.users._partitionerDirect.findOne({_id, admin: true}, {fields: {_id: 1}});
 	},
 
 	addToGroup(collection, entityId, groupId) {
@@ -223,7 +228,7 @@ Partitioner = {
 			throw new Meteor.Error(403, ErrMsg.multiGroupErr);
 		}
 
-		let currentGroupIds = collection.direct.findOne(entityId, {fields: {_groupId: 1}})?._groupId;
+		let currentGroupIds = collection._partitionerDirect.findOne(entityId, {fields: {_groupId: 1}})?._groupId;
 		if (!currentGroupIds) {
 			currentGroupIds = [groupId];
 		} else if (typeof currentGroupIds == 'string') {
@@ -232,7 +237,7 @@ Partitioner = {
 
 		if (currentGroupIds.indexOf(groupId) == -1) {
 			currentGroupIds.push(groupId);
-			collection.direct.update(entityId, {$set: {_groupId: currentGroupIds}});
+			collection._partitionerDirect.update(entityId, {$set: {_groupId: currentGroupIds}});
 		}
 		console.log('addToGroup', currentGroupIds);
 		return currentGroupIds;
@@ -243,7 +248,7 @@ Partitioner = {
 			throw new Meteor.Error(403, ErrMsg.multiGroupErr);
 		}
 
-		let currentGroupIds = collection.direct.findOne(entityId, {fields: {_groupId: 1}})?._groupId;
+		let currentGroupIds = collection._partitionerDirect.findOne(entityId, {fields: {_groupId: 1}})?._groupId;
 		if (!currentGroupIds) {
 			return [];
 		}
@@ -254,7 +259,7 @@ Partitioner = {
 		const index = currentGroupIds.indexOf(groupId);
 		if (index != -1) {
 			currentGroupIds.splice(index, 1);
-			collection.direct.update(entityId, {$set: {_groupId: currentGroupIds}});
+			collection._partitionerDirect.update(entityId, {$set: {_groupId: currentGroupIds}});
 		}
 
 		return currentGroupIds;
@@ -277,12 +282,12 @@ Partitioner = {
 			update: this._isAdmin,
 			remove: this._isAdmin
 		});
-		collection.before.find(findHook);
-		collection.before.findOne(findHook);
-		collection.before.upsert((...args) => upsertHook(options.multipleGroups, ...args));
+		collection._partitionerBefore.find(findHook);
+		collection._partitionerBefore.findOne(findHook);
+		collection._partitionerBefore.upsert((...args) => upsertHook(options.multipleGroups, ...args));
 		// These will hook the _validated methods as well
 
-		collection.before.insert((...args) => insertHook(options.multipleGroups, ...args));
+		collection._partitionerBefore.insert((...args) => insertHook(options.multipleGroups, ...args));
 		// No update/remove hook necessary, findHook will be used automatically
 
 		// store a hash of which collections allow multiple groups
@@ -291,14 +296,15 @@ Partitioner = {
 		}
 
 		// Index the collections by groupId on the server for faster lookups across groups
-		return collection._ensureIndex(getPartitionedIndex(options.index), options.indexOptions);
+		return collection.createIndex ? collection.createIndex(getPartitionedIndex(options.index), options.indexOptions)
+			: collection._ensureIndex(getPartitionedIndex(options.index), options.indexOptions);
 	},
 };
 
 // Accounts.createUser, etc, checks for case-insensitive matches of the email address
 // however, it uses Meteor.users.find which only operates on the partitioned collection
 // so will not find a matching user in a different group.
-// Hence make them use Meteor.users.direct.find instead.
+// Hence make them use Meteor.users._partitionerDirect.find instead.
 // Don't wrap createUser with Partitioner.directOperation because want inserted user doc to be
 // automatically assigned to the group
 

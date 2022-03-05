@@ -27,8 +27,6 @@ meteor add wildhart:partitioner
 
 This fork of Partitioner uses its own internal version of a simplified [collection-hooks](https://github.com/matb33/meteor-collection-hooks) package to transparently intercept collection operations on the client and server side so that writing code for each group of users is almost the same as writing for the whole app. Only minor modifications from a standalone app designed for a single group of users is necessary.
 
-**If you also use the `collection-hooks` packages then this version of Partitioner may clash with it**
-
 Partitioner operates at the collection level. On the server and client, call `Partition.partitionCollection` immediately after declaring a collection:
 
 ```
@@ -233,7 +231,71 @@ See [CrowdMapper](https://github.com/mizzao/CrowdMapper) for a highly concurrent
 
 ## Version History
 
+### **2.0.0 (2022-03-06)**
+
+- **Potential Breaking Change**.  Rename internal collection hooks from `.before.` and `.direct.` to `._partitionerBefore.` and `._partitionerDirect.` for compatibility along side [matb33:collection-hooks](https://github.com/matb33/meteor-collection-hooks).  These were undocumented but if they were used by your code then this would break, hence the major version number bump.
+- Meteor 2.4 compatibility - use `collection.createIndex` if available, but fall back to deprecated `collection._ensureIndex` for compatibility with older Meteor versions.
+
 ### 1.2.0 (2021-07-17)
+
 - Meteor 2.3 compatibility.
+
 ### 1.1.0 (2020-02-01)
+
 - Added `multipleGroups` option and `addToGroup()`/`removeFromGroup()` methods.  Note, this is backwards compatible with existing collections.
+
+### v1.0.3
+
+* Added upsert hooks
+
+### **v1.0.0**
+
+* Major rewrite by wildhart
+* Added support for `createUser`, `findUserByEmail`, `findUserByUsername` finding globally
+* Use own lightweight collection hooks instead of matb33:collection-hooks
+* Removed tests (for now)
+
+### v0.5.9
+
+* Fix a bug that would create blank records for users who are deleted. (#14) 
+
+### v0.5.8 
+
+* Use a workaround to short-circuit `_id: {$in: [...]}` style queries, which 
+would cause an error for some user login processes because of the way 
+collection hooks retrieved documents. (See HarvardEconCS/turkserver-meteor#44). 
+
+### v0.5.7 
+
+* Correct behavior when a complex `_id` is specified. (#4, #13). Note, 
+  however, that direct searches using `_id` still short-circuit partitioning 
+  for performance reasons (#9). This may be changed in the future.
+     
+### v0.5.6
+
+* Allow for options to be specified on partitioned indexes.
+
+### v0.5.5
+
+* Remove package-level variables from the global namespace. (#2, #11)
+
+### v0.5.4
+
+* Update usage of Collection API for Meteor 0.9.1+, and use updated version of collection hooks.
+
+### v0.5.3
+
+* **Re-release for Meteor 0.9.**
+
+### v0.5.2
+
+* Don't include the meta `_groupId` value with `find`/`findOne` operations on the server. This can save a good chunk of network traffic for publications and also makes partitioning more invisible. (#1)
+* Fixed an issue with how validators were modified on insecure collections.
+
+### v0.5.1
+
+* Allow for overriding of `Partitioner.group()` via environment variable in addition to in hooks.
+
+### v0.5.0
+
+* First release; refactored out of https://github.com/HarvardEconCS/turkserver-meteor.

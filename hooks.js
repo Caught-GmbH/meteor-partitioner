@@ -32,9 +32,9 @@ const proto = Mongo.Collection.prototype;
 const directEnv = new Meteor.EnvironmentVariable(false);
 const methods = ['find', 'findOne', 'insert', 'update', 'remove', 'upsert'];
 
-// create the collection.before.* methods
+// create the collection._partitionerBefore.* methods
 // have to create it initially using a getter so we can store self=this and create a new group of functions which have access to self
-Object.defineProperty(proto, 'before', {
+Object.defineProperty(proto, '_partitionerBefore', {
 	get() {
 		// console.log('creating before functions', this._name);
 		const self = this;
@@ -43,14 +43,14 @@ Object.defineProperty(proto, 'before', {
 			self['_groupingBefore_'+method] = hookFn;
 		});
 		// replace the .direct prototype with the created object, so we don't have to recreate it every time.
-		Object.defineProperty(this, 'before', {value: fns});
+		Object.defineProperty(this, '_partitionerBefore', {value: fns});
 		return fns;
 	}
 });
 
-// create the collection.direct.* methods
+// create the collection._partitionerDirect.* methods
 // have to create it initially using a getter so we can store self=this and create a new group of functions which have access to self
-Object.defineProperty(proto, 'direct', {
+Object.defineProperty(proto, '_partitionerDirect', {
 	get() {
 		// console.log('creating direct functions', this._name);
 		const self = this;
@@ -59,7 +59,7 @@ Object.defineProperty(proto, 'direct', {
 			return directEnv.withValue(true, () => proto[method].apply(self, args));
 		});
 		// replace the .direct prototype with the created object, so we don't have to recreate it every time.
-		Object.defineProperty(this, 'direct', {value: fns});
+		Object.defineProperty(this, '_partitionerDirect', {value: fns});
 		return fns;
 	}
 });
