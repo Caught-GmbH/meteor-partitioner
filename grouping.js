@@ -7,7 +7,6 @@ Meteor.publish(null, function () {
 
 // Special hook for Meteor.users to scope for each group
 function userFindHook(userId, selector /*, options*/) {
-	console.log('userFindHook', userId, selector);
 	if (Partitioner._directOps.get() === true
 		|| Helpers.isDirectUserSelector(selector)
 		|| Partitioner._searchAllUsers.get() === true
@@ -19,7 +18,6 @@ function userFindHook(userId, selector /*, options*/) {
 	// function, and Partitioner._currentGroup is not set
 	if (!userId && !groupId) return true;
 
-	console.log('   proceeding...', userId, selector);
 	if (!groupId) {
 		const user = Meteor.users._partitionerDirect.findOne(userId, {fields: {group: 1}});
 
@@ -67,7 +65,6 @@ function hookGetSetGroup(userId) {
 
 // No allow/deny for find so we make our own checks
 function findHook(userId, selector, options) {
-	console.log('findHook', userId, selector);
 	if (
 		// Don't scope for direct operations
 		Partitioner._directOps.get() === true
@@ -80,8 +77,6 @@ function findHook(userId, selector, options) {
 		|| Helpers.isDirectSelector(selector)
 
 	) return true;
-
-	console.log('   proceeding...', userId, selector);
 
 	const groupId = hookGetSetGroup(userId);
 
@@ -239,7 +234,6 @@ Partitioner = {
 			currentGroupIds.push(groupId);
 			collection._partitionerDirect.update(entityId, {$set: {_groupId: currentGroupIds}});
 		}
-		console.log('addToGroup', currentGroupIds);
 		return currentGroupIds;
 	},
 
