@@ -103,6 +103,16 @@ Partitioner.addToGroup(Foo, newFooId, sharedGroupId)
 
 Remove a document from a shared group.
 
+#### `Partitioner.allowDirectIdSelectors = boolean`
+
+Since version 3.0.1 this fork started adding the filtering to ALL queries and updates, including direct selectors (e.g. `.findOne(docId)` and `.update({_id: docId}, ...)`).  This is safer behaviour since it prevents malicious users calling Meteor methods/publications on the client and passing random userIds which are not in their group.  This fixes [#9](https://github.com/Meteor-Community-Packages/meteor-partitioner/issues/9) and [#10](https://github.com/Meteor-Community-Packages/meteor-partitioner/issues/10).
+
+To revert to the previous **unsafe** behaviour you should place this somewhere in your **server** code:
+```
+Partitioner.allowDirectIdSelectors = true;
+````
+Note that this is a global setting and is not bound to the current user environment, so will apply to all operations across all users/groups.  Do not enable it temporarily for a particular operation because other operartions may be happening in parallel.  Use `Partitioner.directOperation(() => {})` instead for temporary direct operations.
+
 ## Configuring Subscriptions
 
 Suppose you have a publication on the server such as the following:
@@ -231,9 +241,14 @@ See [CrowdMapper](https://github.com/mizzao/CrowdMapper) for a highly concurrent
 
 ## Version History
 
+### **3.0.1 (2022-03-15)**
+
+- **Breaking Change**: Direct selectors (e.g. `.findOne(docId)` and `.find({_id: docId})`) are now partitioned.  This fixes [#9](https://github.com/Meteor-Community-Packages/meteor-partitioner/issues/9) and [#10](https://github.com/Meteor-Community-Packages/meteor-partitioner/issues/10).
+- Added `Partitioner.allowDirectIdSelectors = true` to revert to previous behaviour, but this is **`false`** by default.
+
 ### **2.0.0 (2022-03-06)**
 
-- **Potential Breaking Change**.  Rename internal collection hooks from `.before.` and `.direct.` to `._partitionerBefore.` and `._partitionerDirect.` for compatibility along side [matb33:collection-hooks](https://github.com/matb33/meteor-collection-hooks).  These were undocumented but if they were used by your code then this would break, hence the major version number bump.
+- **Potential Breaking Change**:  Rename internal collection hooks from `.before.` and `.direct.` to `._partitionerBefore.` and `._partitionerDirect.` for compatibility along side [matb33:collection-hooks](https://github.com/matb33/meteor-collection-hooks).  These were undocumented but if they were used by your code then this would break, hence the major version number bump.
 - Meteor 2.4 compatibility - use `collection.createIndex` if available, but fall back to deprecated `collection._ensureIndex` for compatibility with older Meteor versions.
 
 ### 1.2.0 (2021-07-17)

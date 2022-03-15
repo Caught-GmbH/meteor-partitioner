@@ -1,4 +1,5 @@
 const multipleGroupCollections = {};
+let allowDirectIdSelectors = false;
 
 // Publish admin and group for users that have it
 Meteor.publish(null, function () {
@@ -7,8 +8,10 @@ Meteor.publish(null, function () {
 
 // Special hook for Meteor.users to scope for each group
 function userFindHook(userId, selector /*, options*/) {
-	if (Partitioner._directOps.get() === true
-		|| Helpers.isDirectUserSelector(selector)
+	const isDirectSelector = Helpers.isDirectUserSelector(selector);
+	if (
+		(allowDirectIdSelectors && isDirectSelector)
+		|| Partitioner._directOps.get() === true
 		|| Partitioner._searchAllUsers.get() === true
 	) return true;
 
@@ -38,9 +41,14 @@ function userFindHook(userId, selector /*, options*/) {
 
 	filter = {
 		"group": groupId,
-		"admin": {$exists: false}
 	};
+	if (!isDirectSelector) {
+		filter.admin = {$exists: false}
+	}
 	if (selector == null) {
+		this.args[0] = filter;
+	} else if (typeof selector == 'string') {
+		filter._id = selector;
 		this.args[0] = filter;
 	} else {
 		Object.assign(selector, filter);
@@ -68,13 +76,10 @@ function findHook(userId, selector, options) {
 	if (
 		// Don't scope for direct operations
 		Partitioner._directOps.get() === true
-
-		// for find(id) we should not touch this
-		// TODO this may allow arbitrary finds across groups with the right _id
-		// We could amend this in the future to {_id: someId, _groupId: groupId}
+		// Fixed in 3.0.0 - now we even add the groupId to direct selectors
 		// https://github.com/mizzao/meteor-partitioner/issues/9
 		// https://github.com/mizzao/meteor-partitioner/issues/10
-		|| Helpers.isDirectSelector(selector)
+		|| (allowDirectIdSelectors && Helpers.isDirectSelector(selector))
 
 	) return true;
 
@@ -82,7 +87,14 @@ function findHook(userId, selector, options) {
 
 	// force the selector to scope for the _groupId
 	if (selector == null) {
-		this.args[0] = {_groupId: groupId};
+		this.args[0] = {
+			_groupId: groupId,
+		};
+	} else if (typeof selector == 'string') {
+		this.args[0] = {
+			_id: selector,
+			_groupId: groupId,
+		};
 	} else {
 		selector._groupId = groupId;
 	}
@@ -156,6 +168,7 @@ function getPartitionedIndex(index) {
 	return {...defaultIndex, ...index};
 }
 
+
 Partitioner = {
 	// Meteor environment variables for scoping group operations
 	_currentGroup: new Meteor.EnvironmentVariable(),
@@ -170,7 +183,7 @@ Partitioner = {
 			throw new Meteor.Error(403, "User is already in a group");
 		}
 
-		return Meteor.users.update(userId, {$set: {group: groupId}});
+		return Meteor.users._partitionerDirect.update(userId, {$set: {group: groupId}});
 	},
 
 	getUserGroup(userId) {
@@ -292,6 +305,19 @@ Partitioner = {
 		// Index the collections by groupId on the server for faster lookups across groups
 		return collection.createIndex ? collection.createIndex(getPartitionedIndex(options.index), options.indexOptions)
 			: collection._ensureIndex(getPartitionedIndex(options.index), options.indexOptions);
+	},
+
+	get allowDirectIdSelectors() {
+		return allowDirectIdSelectors;
+	},
+	set allowDirectIdSelectors(val) {
+		if (typeof val != 'boolean') {
+			throw new Error('Partitioner.allowDirectIdSelectors can only be boolean');
+		}
+		allowDirectIdSelectors = val;
+		if (val) {
+			console.warn('WARNING: setting Partitioner.allowDirectIdSelectors = true may allow unsafe operations!');
+		}
 	},
 };
 
