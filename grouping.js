@@ -10,9 +10,8 @@ Meteor.publish(null, function () {
 function userFindHook(userId, selector /*, options*/) {
 	const isDirectSelector = Helpers.isDirectUserSelector(selector);
 	if (
-		(allowDirectIdSelectors && isDirectSelector)
+		((allowDirectIdSelectors || Partitioner._searchAllUsers.get()) && isDirectSelector)
 		|| Partitioner._directOps.get() === true
-		|| Partitioner._searchAllUsers.get() === true
 	) return true;
 
 	let groupId = Partitioner._currentGroup.get();

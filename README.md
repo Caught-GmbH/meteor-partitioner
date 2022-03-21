@@ -241,6 +241,10 @@ See [CrowdMapper](https://github.com/mizzao/CrowdMapper) for a highly concurrent
 
 ## Version History
 
+### **3.0.2 (2022-03-22)**
+
+- Limit extent of allowing Accounts Core packages such as `CreateUser`, `_attemptLogin`, etc from searching all users so that publications for the same user which are already running cannot return all users.
+
 ### **3.0.1 (2022-03-15)**
 
 - **Breaking Change**: Direct selectors (e.g. `.findOne(docId)` and `.find({_id: docId})`) are now partitioned.  This fixes [#9](https://github.com/Meteor-Community-Packages/meteor-partitioner/issues/9) and [#10](https://github.com/Meteor-Community-Packages/meteor-partitioner/issues/10).
