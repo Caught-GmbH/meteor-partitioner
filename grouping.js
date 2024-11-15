@@ -3,7 +3,7 @@ let allowDirectIdSelectors = false;
 
 // Publish admin and group for users that have it
 Meteor.publish(null, function () {
-	return this.userId && Meteor.users._partitionerDirect.find(this.userId, {fields: {admin: 1, group: 1}});
+	return this.userId && Meteor.users._partitionerDirect.find(this.userId, {projection: {admin: 1, group: 1}});
 });
 
 // Special hook for Meteor.users to scope for each group
@@ -21,7 +21,7 @@ function userFindHook(userId, selector /*, options*/) {
 	if (!userId && !groupId) return true;
 
 	if (!groupId) {
-		const user = Meteor.users._partitionerDirect.findOne(userId, {fields: {group: 1}});
+		const user = Meteor.users._partitionerDirect.findOne(userId, {projection: {group: 1}});
 
 		// user will be undefined inside reactive publish when user is deleted while subscribed
 		if (!user) return false;
@@ -30,7 +30,7 @@ function userFindHook(userId, selector /*, options*/) {
 
 		// If user is admin and not in a group, proceed as normal (select all users)
 		// do user2 findOne separately so that the findOne above can hit the cache
-		if (!groupId && Meteor.users._partitionerDirect.findOne(userId, {fields: {admin: 1}}).admin) return true;
+		if (!groupId && Meteor.users._partitionerDirect.findOne(userId, {projection: {admin: 1}}).admin) return true;
 
 		// Normal users need to be in a group
 		if (!groupId) throw new Meteor.Error(403, ErrMsg.groupErr);
@@ -100,11 +100,11 @@ function findHook(userId, selector, options) {
 
 	// Adjust options to not return _groupId
 	if (options == null) {
-		this.args[1] = {fields: {_groupId: 0}};
+		this.args[1] = {projection: {_groupId: 0}};
 	} else {
-		// If options already exist, add {_groupId: 0} unless fields has {foo: 1} somewhere
-		if (options.fields == null) options.fields = {};
-		if (!Object.values(options.fields).some(v => v)) options.fields._groupId = 0;
+		// If options already exist, add {_groupId: 0} unless projection has {foo: 1} somewhere
+		if (options.projection == null) options.projection = {};
+		if (!Object.values(options.projection).some(v => v)) options.projection._groupId = 0;
 	}
 
 	return true;
@@ -178,7 +178,7 @@ Partitioner = {
 		check(userId, String);
 		check(groupId, String);
 
-		if (Meteor.users._partitionerDirect.findOne(userId, {fields: {group: 1}}).group) {
+		if (Meteor.users._partitionerDirect.findOne(userId, {projection: {group: 1}}).group) {
 			throw new Meteor.Error(403, "User is already in a group");
 		}
 
@@ -187,7 +187,7 @@ Partitioner = {
 
 	getUserGroup(userId) {
 		check(userId, String);
-		return (Meteor.users._partitionerDirect.findOne(userId, {fields: {group: 1}}) || {}).group;
+		return (Meteor.users._partitionerDirect.findOne(userId, {projection: {group: 1}}) || {}).group;
 	},
 
 	clearUserGroup(userId) {
@@ -227,7 +227,7 @@ Partitioner = {
 	},
 
 	_isAdmin(_id) {
-		return !!Meteor.users._partitionerDirect.findOne({_id, admin: true}, {fields: {_id: 1}});
+		return !!Meteor.users._partitionerDirect.findOne({_id, admin: true}, {projection: {_id: 1}});
 	},
 
 	addToGroup(collection, entityId, groupId) {
@@ -235,7 +235,7 @@ Partitioner = {
 			throw new Meteor.Error(403, ErrMsg.multiGroupErr);
 		}
 
-		let currentGroupIds = collection._partitionerDirect.findOne(entityId, {fields: {_groupId: 1}})?._groupId;
+		let currentGroupIds = collection._partitionerDirect.findOne(entityId, {projection: {_groupId: 1}})?._groupId;
 		if (!currentGroupIds) {
 			currentGroupIds = [groupId];
 		} else if (typeof currentGroupIds == 'string') {
@@ -254,7 +254,7 @@ Partitioner = {
 			throw new Meteor.Error(403, ErrMsg.multiGroupErr);
 		}
 
-		let currentGroupIds = collection._partitionerDirect.findOne(entityId, {fields: {_groupId: 1}})?._groupId;
+		let currentGroupIds = collection._partitionerDirect.findOne(entityId, {projection: {_groupId: 1}})?._groupId;
 		if (!currentGroupIds) {
 			return [];
 		}
