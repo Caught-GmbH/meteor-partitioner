@@ -7,7 +7,7 @@ Meteor.publish(null, function () {
 });
 
 // Special hook for Meteor.users to scope for each group
-async function userFindAsyncHook(userId, selector /*, options*/) {
+async function userFindHookAsync(userId, selector /*, options*/) {
 	const isDirectSelector = Helpers.isDirectUserSelector(selector);
 	if (
 		((allowDirectIdSelectors || Partitioner._searchAllUsers.get()) && isDirectSelector)
@@ -30,7 +30,7 @@ async function userFindAsyncHook(userId, selector /*, options*/) {
 
 		// If user is admin and not in a group, proceed as normal (select all users)
 		// do user2 findOne separately so that the findOne above can hit the cache
-		if (!groupId && await Meteor.users._partitionerDirect.findOneAsync(userId, {fields: {admin: 1}}).admin) return true;
+		if (!groupId && (await Meteor.users._partitionerDirect.findOneAsync(userId, {fields: {admin: 1}})).admin) return true;
 
 		// Normal users need to be in a group
 		if (!groupId) throw new Meteor.Error(403, ErrMsg.groupErr);
@@ -56,10 +56,6 @@ async function userFindAsyncHook(userId, selector /*, options*/) {
 	return true;
 }
 
-function userFindHook(userId, selector /*, options*/) {
-	return Meteor.wrapAsync(userFindAsyncHook)(userId, selector);
-}
-
 async function hookGetSetGroupAsync(userId) {
 	let groupId = Partitioner._currentGroup.get();
 
@@ -71,27 +67,11 @@ async function hookGetSetGroupAsync(userId) {
 
 		Partitioner._currentGroup._set(groupId);
 	}
-
-	return groupId;
-}
-
-function hookGetSetGroup(userId) {
-	let groupId = Partitioner._currentGroup.get();
-
-	if (!groupId) {
-		if (!userId) throw new Meteor.Error(403, ErrMsg.userIdErr);
-
-		groupId = Partitioner.getUserGroup(userId);
-		if (!groupId) throw new Meteor.Error(403, ErrMsg.groupErr);
-
-		Partitioner._currentGroup._set(groupId);
-	}
-
 	return groupId;
 }
 
 // No allow/deny for find so we make our own checks
-function findHook(userId, selector, options) {
+async function findHookAsync(userId, selector, options) {
 	if (
 		// Don't scope for direct operations
 		Partitioner._directOps.get() === true
@@ -102,7 +82,7 @@ function findHook(userId, selector, options) {
 
 	) return true;
 
-	const groupId = hookGetSetGroup(userId);
+	const groupId = await hookGetSetGroupAsync(userId);
 
 	// force the selector to scope for the _groupId
 	if (selector == null) {
@@ -130,64 +110,52 @@ function findHook(userId, selector, options) {
 	return true;
 };
 
-async function insertAsyncHook(multipleGroups, userId, doc) {
+async function insertHookAsync(multipleGroups, userId, doc) {
 	// Don't add group for direct inserts
 	if (Partitioner._directOps.get() === true) return true;
 
-	const groupId = hookGetSetGroup(userId);
+	const groupId = await hookGetSetGroupAsync(userId);
 
 	doc._groupId = multipleGroups ? [groupId] : groupId;
 	return true;
 };
 
-function insertHook(multipleGroups, userId, doc) {
-	return Meteor.wrapAsync(insertAsyncHook)(multipleGroups, userId, doc);
-}
-
-function userInsertAsyncHook(userId, doc) {
+async function userInsertHookAsync(userId, doc) {
 	// Don't add group for direct inserts
 	if (Partitioner._directOps.get() === true) return true;
 
-	const groupId = hookGetSetGroup(userId);
+	const groupId = await hookGetSetGroupAsync(userId);
 
 	doc.group = groupId;
 
 	return true;
 };
 
-function upsertAsyncHook(multipleGroups, userId, selector, doc) {
+async function upsertHookAsync(multipleGroups, userId, selector, doc) {
 	// Don't add group for direct inserts
 	if (Partitioner._directOps.get() === true) return true;
 
-	const groupId = hookGetSetGroup(userId);
+	const groupId = await hookGetSetGroupAsync(userId);
 
 	doc._groupId = multipleGroups ? [groupId] : groupId;
 	return true;
 };
 
-function upsertHook(multipleGroups, userId, selector, doc) {
-	return Meteor.wrapAsync(upsertAsyncHook)(multipleGroups, userId, selector, doc);
-}
-
-function userUpsertAsyncHook(userId, selector, doc) {
+async function userUpsertHookAsync(userId, selector, doc) {
 	// Don't add group for direct inserts
 	if (Partitioner._directOps.get() === true) return true;
 
-	const groupId = hookGetSetGroup(userId);
+	const groupId = await hookGetSetGroupAsync(userId);
 
 	doc.group = groupId;
 	return true;
 };
-
-function userUpsertHook(userId, selector, doc) {
-	return Meteor.wrapAsync(userUpsertAsyncHook)(userId, selector, doc);
-}
 
 // Attach the find/insert hooks to Meteor.users
-Meteor.users._partitionerBefore.find(userFindHook);
-Meteor.users._partitionerBefore.findOneAsync(userFindAsyncHook);
-Meteor.users._partitionerBefore.insertAsync(userInsertAsyncHook);
-Meteor.users._partitionerBefore.upsertAsync(userUpsertAsyncHook);
+Meteor.users._partitionerBefore.find(userFindHookAsync);
+Meteor.users._partitionerBefore.findOneAsync(userFindHookAsync);
+Meteor.users._partitionerBefore.insertAsync(userInsertHookAsync);
+Meteor.users._partitionerBefore.upsertAsync(userUpsertHookAsync);
 
 function getPartitionedIndex(index) {
 	const defaultIndex = {_groupId: 1};
@@ -210,36 +178,21 @@ Partitioner = {
 		check(userId, String);
 		check(groupId, String);
 
-		if (await Meteor.users._partitionerDirect.findOneAsync(userId, {fields: {group: 1}}).group) {
+		if ((await Meteor.users._partitionerDirect.findOneAsync(userId, {fields: {group: 1}})).group) {
 			throw new Meteor.Error(403, "User is already in a group");
 		}
 
-		return Meteor.users._partitionerDirect.update(userId, {$set: {group: groupId}});
-	},
-
-	// Static method to backwards-compatibly
-	setUserGroup(userId, groupId) {
-		return Meteor.wrapAsync(this.setUserGroupAsync)(userId, groupId);
+		return Meteor.users._partitionerDirect.updateAsync(userId, {$set: {group: groupId}});
 	},
 
 	async getUserGroupAsync(userId) {
 		check(userId, String);
-		return (await Meteor.users._partitionerDirect.findOneAsync(userId, {fields: {group: 1}}) || {}).group;
-	},
-
-	// Static method to backwards-compatibly
-	getUserGroup(userId) {
-		return Meteor.wrapAsync(this.getUserGroupAsync)(userId);
+		return ((await Meteor.users._partitionerDirect.findOneAsync(userId, {fields: {group: 1}})) || {}).group;
 	},
 
 	async clearUserGroupAsync(userId) {
 		check(userId, String);
-		return await Meteor.users._partitionerDirect.updateAsync(userId, {$unset: {group: 1}});
-	},
-
-	// Static method to backwards-compatibly
-	clearUserGroup(userId) {
-		return Meteor.wrapAsync(this.clearUserGroupAsync)(userId);
+		return Meteor.users._partitionerDirect.updateAsync(userId, {$unset: {group: 1}});
 	},
 
 	async groupAsync() {
@@ -254,42 +207,27 @@ Partitioner = {
 		return userId && await this.getUserGroupAsync(userId);
 	},
 
-	// Static method to backwards-compatibly
-	group() {
-		return Meteor.wrapAsync(this.groupAsync)();
-	},
-
 	bindGroup(groupId, func) {
 		return this._currentGroup.withValue(groupId, func);
 	},
 
 	async bindUserGroupAsync(userId, func) {
-		const groupId = Partitioner.getUserGroupAsync(userId);
+		const groupId = await Partitioner.getUserGroupAsync(userId);
 
 		if (!groupId) {
 			Meteor._debug(`Dropping operation because ${userId} is not in a group`);
 			return;
 		}
 
-		return await Partitioner.bindGroup(groupId, func);
-	},
-
-	// Static method to backwards-compatibly
-	bindUserGroup(userId, func) {
-		return Meteor.wrapAsync(this.bindUserGroupAsync)(userId, func);
+		return Partitioner.bindGroup(groupId, func);
 	},
 
 	directOperation(func) {
 		return this._directOps.withValue(true, func);
 	},
 
-	async _isAdminAsync(_id) {
+	async _isAdmin(_id) {
 		return !!(await Meteor.users._partitionerDirect.findOneAsync({_id, admin: true}, {fields: {_id: 1}}));
-	},
-
-	// Static method to backwards-compatibly
-	_isAdmin(_id) {
-		return Meteor.wrapAsync(this._isAdminAsync)(_id);
 	},
 
 	async addToGroupAsync(collection, entityId, groupId) {
@@ -311,10 +249,6 @@ Partitioner = {
 		return currentGroupIds;
 	},
 
-	// Static method to backwards-compatibly
-	addToGroup(collection, entityId, groupId) {
-		return Meteor.wrapAsync(this.addToGroupAsync)(collection, entityId, groupId);
-	},
 
 	async removeFromGroupAsync(collection, entityId, groupId) {
 		if (!multipleGroupCollections[collection._name]) {
@@ -338,46 +272,41 @@ Partitioner = {
 		return currentGroupIds;
 	},
 
-	// Static method to backwards-compatibly
-	removeFromGroup(collection, entityId, groupId) {
-		return Meteor.wrapAsync(this.removeFromGroupAsync)(collection, entityId, groupId);
-	},
+	partitionCollection(collection, options = {}) {
+		// Because of the deny below, need to create an allow validator
+		// on an insecure collection if there isn't one already
+		// TODO toto treba zobrat a dat do hookov, lebo deny nepodporuje async
+		// if (collection._isInsecure()) {
+		// 	collection.allow({
+		// 		insert: () => true,
+		// 		update: () => true,
+		// 		remove: () => true,
+		// 	});
+		// }
+		//
+		// // Idiot-proof the collection against admin users
+		// collection.deny({
+		// 	insert: this._isAdmin,
+		// 	update: this._isAdmin,
+		// 	remove: this._isAdmin
+		// });
 
-	async partitionCollection(collection, options = {}) {
-		return Meteor.wrapAsync(async () => {
-			// Because of the deny below, need to create an allow validator
-			// on an insecure collection if there isn't one already
-			if (collection._isInsecure()) {
-				collection.allow({
-					insert: () => true,
-					update: () => true,
-					remove: () => true,
-				});
-			}
+		collection._partitionerBefore.find(findHookAsync); // used in findOneAsync, fetchAsync, observeChangesAsync, countAsync
+		collection._partitionerBefore.findOneAsync(findHookAsync);
+		collection._partitionerBefore.upsertAsync((...args) => upsertHookAsync(options.multipleGroups, ...args));
+		// These will hook the _validated methods as well
 
-			// Idiot-proof the collection against admin users
-			collection.deny({
-				insert: await this._isAdminAsync,
-				update: await this._isAdminAsync,
-				remove: await this._isAdminAsync
-			});
-			collection._partitionerBefore.find(findHook);
-			collection._partitionerBefore.findOneAsync(findHook);
-			collection._partitionerBefore.upsertAsync((...args) => upsertHook(options.multipleGroups, ...args));
-			// These will hook the _validated methods as well
+		collection._partitionerBefore.insertAsync((...args) => insertHookAsync(options.multipleGroups, ...args));
+		// No update/remove hook necessary, findHook will be used automatically
 
-			collection._partitionerBefore.insertAsync((...args) => insertHook(options.multipleGroups, ...args));
-			// No update/remove hook necessary, findHook will be used automatically
+		// store a hash of which collections allow multiple groups
+		if (options.multipleGroups) {
+			multipleGroupCollections[collection._name] = true;
+		}
 
-			// store a hash of which collections allow multiple groups
-			if (options.multipleGroups) {
-				multipleGroupCollections[collection._name] = true;
-			}
-
-			// Index the collections by groupId on the server for faster lookups across groups
-			return collection.createIndex ? collection.createIndex(getPartitionedIndex(options.index), options.indexOptions)
-				: collection._ensureIndex(getPartitionedIndex(options.index), options.indexOptions);
-		})();
+		// Index the collections by groupId on the server for faster lookups across groups
+		return collection.createIndex ? collection.createIndex(getPartitionedIndex(options.index), options.indexOptions)
+			: collection._ensureIndex(getPartitionedIndex(options.index), options.indexOptions);
 	},
 
 	get allowDirectIdSelectors() {
@@ -401,11 +330,11 @@ Partitioner = {
 // Don't wrap createUser with Partitioner.directOperation because want inserted user doc to be
 // automatically assigned to the group
 
-['createUser', 'findUserByEmail', 'findUserByUsername', '_attemptLogin'].forEach(fn => {
+['createUserAsync', 'findUserByEmail', 'findUserByUsername', '_attemptLogin'].forEach(fn => {
 	const orig = Accounts[fn];
 	if (orig) {
-		Accounts[fn] = function() {
-			return Partitioner._searchAllUsers.withValue(true, () => orig.apply(this, arguments));
+		Accounts[fn] = async function() {
+			return Partitioner._searchAllUsers.withValue(true, async () => await orig.apply(this, arguments));
 		};
 	}
 });
