@@ -36,7 +36,15 @@ function getUserId() {
 const proto = Mongo.Collection.prototype;
 const directEnv = new Meteor.EnvironmentVariable(false);
 const selectionMethods = ["find", "findOneAsync", "insertAsync", "updateAsync", "removeAsync", "upsertAsync"];
-const fetchMethods = ["fetchAsync", "observeChangesAsync", "countAsync"];
+const fetchMethods = [
+  "fetchAsync",
+  "observeAsync",
+  "observeChangesAsync",
+  "countAsync",
+  "forEachAsync",
+  "mapAsync",
+  Symbol.asyncIterator,
+];
 
 // create the collection._partitionerBefore.* methods
 // have to create it initially using a getter so we can store self=this and create a new group of functions which have access to self
@@ -81,6 +89,8 @@ Object.defineProperty(proto, "_partitionerDirect", {
 global.hookLogging = false;
 // if (Meteor.isServer) global.hookLogging = true;
 
+global.uuu = false;
+
 selectionMethods.forEach(method => {
   const _orig = proto[method];
   // if the method is find, we do not replace the original method
@@ -89,6 +99,24 @@ selectionMethods.forEach(method => {
     proto[method] = function(...args) {
       const self = this;
       const cursor = _orig.apply(this, args); // we need to get cursor to get fetch methods
+      const userId = getUserId();
+      // Method _observeChanges is used by Meteor publications
+      // Store original method to prevent infinite loop
+      if(!cursor._mongo._observeChangesOrig) {
+        cursor._mongo._observeChangesOrig = cursor._mongo._observeChanges;
+      }
+      // Modify cursor and then call original method
+      cursor._mongo._observeChanges = async function(...args) {
+        if(self._groupingBefore_find) {
+          const selector = cursor._cursorDescription.selector;
+          await self._groupingBefore_find.call({args}, userId, selector, {});
+          cursor._cursorDescription.selector = selector;
+        }
+        return cursor._mongo._observeChangesOrig.apply(this, args);
+      };
+
+      // Now modify all cursor methods
+      // ...methods after find (fetchAsync, countAsync...)
       fetchMethods.forEach(fetchMethod => {
         const _orig = cursor[fetchMethod];
         cursor[fetchMethod] = async function(...args) {
@@ -96,7 +124,7 @@ selectionMethods.forEach(method => {
           if(self._groupingBefore_find) {
             const selector = cursor._cursorDescription.selector;
             const userId = getUserId();
-            await self._groupingBefore_find.call(args, userId, selector, {});
+            await self._groupingBefore_find.call({args}, userId, selector, {});
             cursor._cursorDescription.selector = selector;
           }
           // run the original fetch method
@@ -108,6 +136,7 @@ selectionMethods.forEach(method => {
     return;
   }
 
+  // Now modify data manipulation async methods (insertAsync, updateAsync...)
   // this replaces all async original methods
   // except find, which is sync and needs to be handled differently
   proto[method] = async function(...args) {
