@@ -40,9 +40,9 @@ const fetchMethods = [
   "fetchAsync",
   "observeAsync",
   "observeChangesAsync",
+  "mapAsync",
   "countAsync",
   "forEachAsync",
-  "mapAsync",
   Symbol.asyncIterator,
 ];
 
@@ -107,7 +107,7 @@ selectionMethods.forEach(method => {
       }
       // Modify cursor and then call original method
       cursor._mongo._observeChanges = async function(...args) {
-        if(self._groupingBefore_find) {
+        if(userId && self._groupingBefore_find) {
           const selector = cursor._cursorDescription.selector;
           await self._groupingBefore_find.call({args}, userId, selector, {});
           cursor._cursorDescription.selector = selector;
@@ -123,7 +123,6 @@ selectionMethods.forEach(method => {
           // modify the selector in the cursor before calling the fetch method
           if(self._groupingBefore_find) {
             const selector = cursor._cursorDescription.selector;
-            const userId = getUserId();
             await self._groupingBefore_find.call({args}, userId, selector, {});
             cursor._cursorDescription.selector = selector;
           }
