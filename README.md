@@ -42,9 +42,9 @@ Partitioner.partitionCollection(Foo, options);
 
 Collections that have been partitioned will behave as if there is a separate instance for each group. In particular, on the server and client, the user's current group is used to do the following:
 
-- `find` and `findOne` operations will only return documents for the current group.
-- `insert` will cause documents to appear only in the current group.
-- `update` and `remove` operations will only affect documents for the current group.
+- `find`, `findOne` and `findOneAsync` operations will only return documents for the current group.
+- `insert` and `insertAsync` will cause documents to appear only in the current group.
+- `update`, `updateAsync`, `remove` and `removeAsync` operations will only affect documents for the current group.
 - Attempting any operations on a partitioned collection for which a user has not been assigned to a group will result in an error.
 
 This is accomplished using selector rewriting based on the current `userId` both on the client and in server methods, and Meteor's environment variables. For more details see the source.
@@ -57,21 +57,21 @@ Adds hooks to a particular collection so that it supports partition operations. 
 
 **NOTE**: Any documents in the collection that were not created from a group will not be visible to any groups in the partition. You should think of creating a partitioned collection as an atomic operation consisting of declaring the collection and calling `partitionCollection`; we will consider rolling this into a single API call in the future.
 
-#### `Partitioner.group()`
+#### `Partitioner.groupAsync()`
 
 On the server and client, gets the group of the current user. Returns `undefined` if the user is not logged in or not part of a group. A reactive variable.
 
 ## Server API
 
-#### `Partitioner.setUserGroup(userId, groupId)`
+#### `Partitioner.setUserGroupAsync(userId, groupId)`
 
 Adds a particular user to the group identified by `groupId`. The user will now be able to operate on partitioned collections and will only be able to affect documents scoped to the group. An error will be thrown if the user is already in a group.
 
-#### `Partitioner.getUserGroup(userId)`
+#### `Partitioner.getUserGroupAsync(userId)`
 
 Gets the group of the current user.
 
-#### `Partitioner.clearUserGroup(userId)`
+#### `Partitioner.clearUserGroupAsync(userId)`
 
 Removes the current group assignment of the user. The user will no longer be able to operate on any partitioned collections.
 
@@ -79,7 +79,7 @@ Removes the current group assignment of the user. The user will no longer be abl
 
 Run a function (presumably doing collection operations) masquerading as a particular group. This is necessary for server-originated code that isn't caused by one particular user.
 
-#### `Partitioner.bindUserGroup(userId, func)`
+#### `Partitioner.bindUserGroupAsync(userId, func)`
 
 A convenience function for running `Partitioner.bindGroup` as the group of a particular user.
 
@@ -87,7 +87,7 @@ A convenience function for running `Partitioner.bindGroup` as the group of a par
 
 Sometimes we need to do operations over the entire underlying collection, including all groups. This provides a way to do that, and will not throw an error if the current user method invocation context is not part of a group.
 
-#### `Partitioner.addToGroup(collection, entityId, groupId)`
+#### `Partitioner.addToGroupAsync(collection, entityId, groupId)`
 
 Allows a document to be shared across multiple groups.  Will throw an error if the collection wasn't partitioned with the `multipleGroups: true` option.  E.g.:
 ```
@@ -99,7 +99,7 @@ const newFooId = Foo.insert({msg: 'Hi, I'm a shared Foo'});
 Partitioner.addToGroup(Foo, newFooId, sharedGroupId)
 ```
 
-#### `Partitioner.removeFromGroup(collection, entityId, groupId)`
+#### `Partitioner.removeFromGroupAsync(collection, entityId, groupId)`
 
 Remove a document from a shared group.
 
@@ -136,7 +136,7 @@ Note that due to a current limitation of Meteor (see below), this subscription w
 
 ```js
 Deps.autorun(function() {
-  var group = Partitioner.group();
+  var group = Partitioner.groupAsync();
   Meteor.subscribe("fooPub", bar, group);
 });
 ```
@@ -179,7 +179,10 @@ Deps.autorun(function() {
 To send a message, a client or server method might do something like
 
 ```js
+// Client
 ChatMessages.insert({text: "hello world", room: currentRoom, timestamp: Date.now()});
+// Client/Server
+ChatMessages.insertAsync({text: "hello world", room: currentRoom, timestamp: Date.now()});
 ```
 
 This looks simple enough, until you realize that you need to keep track of the `room` for each message that is entered in to the collection. Why not have some code do it for you automagically?
@@ -205,7 +208,7 @@ The client's subscription would simply be the following:
 
 ```js
 Deps.autorun(function() {
-  var group = Partitioner.group();
+  var group = Partitioner.groupAsync();
   Meteor.subscribe("messages", group);
 });
 ```
@@ -213,7 +216,10 @@ Deps.autorun(function() {
 Now, sending a chat message is as easy as this:
 
 ```js
+// Client
 ChatMessages.insert({text: "hello world", timestamp: Date.now()});
+// Client/Server
+ChatMessages.insertAsync({text: "hello world", timestamp: Date.now()});
 ```
 
 To change chat rooms, simply have server code call `Partitioner.setUserGroup` for a particular user.
@@ -240,6 +246,11 @@ See [CrowdMapper](https://github.com/mizzao/CrowdMapper) for a highly concurrent
 - See also http://stackoverflow.com/q/17356615/586086
 
 ## Version History
+
+### **3.1.0 (2024-12-10)**
+
+- Meteor 3.1 compatibility
+- ref#ctored hooks to use async methods (check this README)
 
 ### **3.0.2 (2022-03-22)**
 
